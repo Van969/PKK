@@ -97,15 +97,14 @@ const tahun = now.getFullYear();
   const bayarPerMinggu = 5000;
 
   // Update tampilan baris
+  const card = cb.closest('.card');
+  const semuaMinggu = card.querySelectorAll(`.bayar-checkbox[data-id="${id}"][data-bulan="${cb.dataset.bulan}"]`);
+  const belumBayar = Array.from(semuaMinggu).filter(x => !x.checked).length;
   const row = cb.closest('tr');
-  let total = 0;
-  row.querySelectorAll('.bayar-checkbox').forEach(x => {
-    if (!x.checked) total += bayarPerMinggu;
-  });
-  row.querySelector('td:nth-child(7)').innerHTML =
-    total > 0
-      ? `<span class="text-danger">Rp ${total.toLocaleString('id-ID')}</span>`
-      : `<span class="text-success fw-bold">Lunas</span>`;
+  const totalCell = row.querySelector('td:nth-child(7)');
+  totalCell.innerHTML = belumBayar === 0
+    ? `<span class="text-success fw-bold">Lunas</span>`
+    : `<span class="text-danger">Rp ${(belumBayar * bayarPerMinggu).toLocaleString('id-ID')}</span>`;
 
   // Kirim ke server
   await fetch('update_mingguan.php', {
