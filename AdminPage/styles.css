@@ -1,0 +1,187 @@
+/* ===== Footer ===== */
+footer {
+  width: 100%;
+  background: #222;
+  color: #fff;
+  padding: 24px 0 12px 0;
+  margin-top: 32px;
+  font-size: 1rem;
+  box-shadow: 0 -2px 12px rgba(0,0,0,0.08);
+}
+
+footer a {
+  color: #fff;
+  text-decoration: none;
+  margin: 0 10px;
+  transition: color 0.2s;
+}
+footer a:hover {
+  color: #25d366; /* WhatsApp green for hover, or pick brand color */
+}
+footer i {
+  margin-right: 6px;
+  vertical-align: middle;
+}
+footer .container {
+  max-width: 1200px; 
+  margin: 0;
+  padding: 0;
+}
+footer small {
+  color: #bbb;
+}
+
+body {
+  font-family: Arial, sans-serif;
+}
+
+/* Sidebar */
+.sidebar {
+  width: 250px;
+  min-height: 100vh;
+  background: #fff;
+  border-right: 1px solid #eee;
+}
+
+.sidebar .nav-link {
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: gray;
+  transition: all 0.2s ease;
+}
+
+.sidebar .nav-link:hover {
+  background: #f1f1f1;
+  color: #000;
+}
+
+.sidebar .nav-link.active {
+  background: #000;   /* hitam */
+  color: #fff;        /* teks putih */
+  font-weight: 600;
+}
+
+.sidebar .nav-link.active i {
+  color: #fff;
+}
+
+/* ===== Card summary ===== */
+
+/* ⚠️ FIX: Ganti nama class modal custom agar tidak bentrok dengan Bootstrap */
+.custom-modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 24px;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+  z-index: 1050;
+  display: none; /* default hidden */
+}
+
+.custom-modal.active {
+  display: block;
+}
+
+.close-btn {
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  font-size: 20px;
+}
+
+/* Hapus efek blur total di seluruh konten */
+.konten {
+  display: flex;
+  min-height: 100vh;
+}
+
+main {
+  flex: 1;
+  overflow-x: auto;
+}
+
+/* Modal backdrop dengan efek blur hanya di belakang modal */
+.modal-backdrop.show {
+  opacity: 1;
+  background: rgba(200,200,200,0.25);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+/* Loading spinner di modal */
+.loading-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(255,255,255,0.6);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1050;
+  display: none;
+}
+
+.spinner {
+  width: 50px;
+  height: 50px;
+  border: 6px solid #eee;
+  border-top: 6px solid #198754;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Garis tabel lebih tebal untuk halaman index */
+.table-bordered th,
+.table-bordered td {
+  border-width: 2px !important;
+  border-color: #dee2e6 !important; /* abu-abu Bootstrap */
+}
+
+
+@import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css');
+
+
+body { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; background:#f6f7fb; }
+.container-main { max-width:1200px; margin:24px auto; }
+.cards { display:flex; gap:18px; margin-bottom:18px; }
+.card-summary { flex:1; background:#fff; padding:18px; border-radius:12px; box-shadow:0 6px 18px rgba(18,38,63,0.04); }
+.card-summary small{ color:#6b7280; }
+.card-summary .amount{ font-weight:700; margin-top:8px; }
+.table-card{ background:#fff; padding:18px; border-radius:12px; box-shadow:0 6px 18px rgba(18,38,63,0.04); }
+.table-card .card-header{ display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+.btn-primary-rounded{ background:#0f172a; color:#fff; border-radius:10px; padding:6px 12px; border:none; }
+.badge-green{ color:#16a34a; }
+.badge-red{ color:#ef4444; }
+.table td, .table th{ vertical-align:middle; }
+@media (max-width:900px){ .cards{ flex-direction:column; } }
+/* --- FIX BLUR SELURUH LAYAR SAAT MODAL --- */
+
+/* Hilangkan blur global apapun */
+body.modal-open,
+body.modal-open .konten {
+  filter: none !important;
+}
+
+/* Fokus efek blur hanya di backdrop */
+.modal-backdrop.show {
+  background: rgba(240, 240, 240, 0.3) !important;
+  backdrop-filter: blur(6px) !important;
+  -webkit-backdrop-filter: blur(6px) !important;
+  opacity: 1 !important;
+}
+
+/* Pastikan modal tetap di atas backdrop */
+.modal {
+  z-index: 1060 !important;
+}
+
+/* Pastikan backdrop tidak terlalu tebal */
+.modal-backdrop {
+  z-index: 1050 !important;
+}

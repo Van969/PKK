@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Login | Go-Kas</title>
+<link rel="stylesheet" href="Loginstyle.css">
+</head>
+<body>
+<div class="login-wrapper">
+  <div class="logo">
+    <img src="logo.png" alt="Logo" class="logo-img">
+  </div>
+  <h1 class="app-title">Go-Kas</h1>
+  <p class="subtitle">Kelola kas kelas anda dengan mudah</p>
+
+  <div class="login-card">
+    <h2>Masuk ke Akun</h2>
+    <p class="desc">Masukkan username dan password</p>
+
+    <form id="loginForm">
+      <div class="form-group">
+        <label for="loginUsername">Username</label>
+        <input type="text" id="loginUsername" name="username" placeholder="Masukkan username" required>
+      </div>
+      <div class="form-group">
+        <label for="loginPassword">Password</label>
+        <div class="password-field">
+          <input type="password" id="loginPassword" name="password" placeholder="Masukkan password" required>
+          <span id="togglePassword">👁️</span>
+        </div>
+      </div>
+      <button type="submit" class="btn-login">Masuk</button>
+    </form>
+
+    <p class="register">Belum punya akun? <span id="registerBtn">Daftar sekarang</span></p>
+  </div>
+</div>
+
+<script>
+const BASE_URL = "http://localhost/Project_PKK";
+
+document.getElementById("loginForm").addEventListener("submit", async function(e){
+    e.preventDefault();
+    const username = document.getElementById("loginUsername").value.trim();
+    const password = document.getElementById("loginPassword").value.trim();
+
+    // Login admin default
+    if(username === "admin" && password === "admin123"){
+        await fetch(`${BASE_URL}/LoginPage/SetSession.php?username=admin&role=admin`, {
+            credentials: 'same-origin'
+        });
+        window.location.href = `${BASE_URL}/AdminPage/index.php`;
+        return;
+    }
+
+    // Login via database
+    const formData = new FormData();
+    formData.append("username", username);
+    formData.append("password", password);
+
+    try {
+        const response = await fetch(`${BASE_URL}/LoginPage/Login.php`, {
+            method: "POST",
+            body: formData,
+            credentials: 'same-origin'
+        });
+        const result = await response.json();
+
+        if(result.status === "success"){
+            window.location.href = result.redirect;
+        } else {
+            alert(result.message);
+        }
+    } catch(err){
+        alert("Terjadi kesalahan koneksi server.");
+    }
+});
+
+document.getElementById("togglePassword").addEventListener("click", function(){
+    const pwd = document.getElementById("loginPassword");
+    pwd.type = pwd.type === "password" ? "text" : "password";
+});
+
+document.getElementById("registerBtn").addEventListener("click", function(){
+    window.location.href = `${BASE_URL}/LoginPage/HalamanRegister.html`;
+});
+</script>
+</body>
+</html>
