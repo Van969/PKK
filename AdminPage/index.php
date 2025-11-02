@@ -1,250 +1,182 @@
 <?php
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
-
-session_start();
 require __DIR__ . '/../db.php';
+session_start();
+date_default_timezone_set('Asia/Jakarta');
 
-// 🔐 Cek login admin
-if (!isset($_SESSION['username']) || $_SESSION['role'] !== 'admin') {
-    header("Location: ../LoginPage/HalamanLogin.html");
-    exit();
+// ============================
+// Ambil bulan & tahun dari URL
+// ============================
+$bulan = isset($_GET['bulan']) ? (int)$_GET['bulan'] : (int)date('n');
+$tahun = isset($_GET['tahun']) ? (int)$_GET['tahun'] : (int)date('Y');
+
+// ============================
+// Nama bulan
+// ============================
+$namaBulan = [
+  "", "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+  "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+];
+
+// ============================
+// Ambil semua siswa
+// ============================
+$stmt = $pdo->query("SELECT id, nama FROM siswa ORDER BY nama ASC");
+$siswa = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// ============================
+// Ambil data pembayaran mingguan dari tabel BARU
+// ============================
+$stmt2 = $pdo->prepare("
+    SELECT pb.siswa_id, pm.minggu_ke, pm.status
+    FROM pembayaran_mingguan_baru pm
+    JOIN pembayaran_baru pb ON pm.pembayaran_id = pb.id
+    WHERE pb.bulan = ? AND pb.tahun = ?
+");
+$stmt2->execute([$bulan, $tahun]);
+
+$pembayaran_data = [];
+foreach ($stmt2 as $d) {
+    $pembayaran_data[$d['siswa_id']][$d['minggu_ke']] = $d['status'];
 }
 
-$username = $_SESSION['username'];
-
-// 📅 Variabel bulan & tahun
-$bulan = isset($_GET['bulan']) ? (int)$_GET['bulan'] : date('n');
-$tahun = isset($_GET['tahun']) ? (int)$_GET['tahun'] : date('Y');
-
-// 🧮 Hitung total pemasukan, pembayaran, pengeluaran
-$stmt = $pdo->query("SELECT COALESCE(SUM(total_pemasukan),0) FROM pemasukan");
-$total_pemasukan_db = $stmt->fetchColumn();
-
-$stmt = $pdo->query("SELECT COALESCE(SUM(jumlah_bayar),0) FROM pembayaran_mingguan");
-$total_pembayaran = $stmt->fetchColumn();
-
-$stmt = $pdo->query("SELECT COALESCE(SUM(amount),0) FROM pengeluaran");
-$total_pengeluaran = $stmt->fetchColumn();
-
-$total_pemasukan = $total_pemasukan_db + $total_pembayaran;
-$saldo_bersih = $total_pemasukan - $total_pengeluaran;
-
-// 📄 Ambil data pembayaran utama
-$stmt = $pdo->prepare("
-    SELECT * FROM pembayaran
-    WHERE bulan = ? AND tahun = ?
-    ORDER BY name ASC
+// ============================
+// Ambil pengeluaran bulan ini
+// ============================
+$stmt3 = $pdo->prepare("
+    SELECT * FROM pengeluaran 
+    WHERE MONTH(created_at) = ? AND YEAR(created_at) = ?
+    ORDER BY created_at DESC
 ");
-$stmt->execute([$bulan, $tahun]);
-$pembayaran = $stmt->fetchAll(PDO::FETCH_ASSOC);
+$stmt3->execute([$bulan, $tahun]);
+$pengeluaran = $stmt3->fetchAll(PDO::FETCH_ASSOC);
+
+// ============================
+// Bayar per minggu (default 5000)
+// ============================
+$bayar_per_minggu = $_SESSION['bayar_per_minggu'] ?? 5000;
 ?>
+
 <!doctype html>
 <html lang="id">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Dashboard Kas</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rekap Kas Kelas</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
 </head>
-<body>
+<body class="bg-light">
+<div class="d-flex konten">
+    <?php include 'sidebar.php'; ?>
+    <main class="flex-fill p-4 bg-light">
+        <?php include 'header.php'; ?>
 
-<div class="d-flex">
-  <!-- Sidebar -->
-  <?php include 'sidebar.php'; ?>
+        <div class="container py-4">
+            <h2 class="text-center mb-4">Rekap Pembayaran Kas Kelas</h2>
 
-  <!-- Konten Utama -->
-  <main class="flex-fill p-4 bg-light">
-    <div class="container-fluid">
+            <!-- Form pilih bulan & tahun -->
+            <form class="mb-3 d-flex justify-content-center gap-2" method="GET" action="index.php">
+                <select name="bulan" class="form-select w-auto">
+                    <?php foreach ($namaBulan as $i => $b): if($i==0) continue; ?>
+                        <option value="<?= $i ?>" <?= $i==$bulan?'selected':'' ?>><?= $b ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <input type="number" name="tahun" value="<?= $tahun ?>" class="form-control w-auto" style="max-width:100px">
+                <button class="btn btn-primary">Tampilkan</button>
+            </form>
 
-      <!-- Header -->
-      <?php include __DIR__.'/header.php'; ?>
-
-      <!-- Judul -->
-      <div class="d-flex justify-content-between align-items-center mb-3">
-        <h3 class="mb-0">Data Pembayaran Kas Kelas</h3>
-      </div>
-
-      <!-- Pencarian -->
-      <div class="mb-3">
-        <input type="text" id="cariNama" class="form-control" placeholder="Cari nama siswa...">
-      </div>
-
-      <!-- Tabel Pembayaran Mingguan -->
-      <div class="table-responsive card p-3 shadow-sm border-0">
-        <div class="d-flex justify-content-between align-items-center mb-3">
-          <h5 class="mb-0">Pembayaran Kas Per Minggu - <?= date('F Y', strtotime("$tahun-$bulan-01")) ?></h5>
-          <div>
-            <button class="btn btn-outline-secondary btn-sm" id="prevMonth"><i class="fa fa-chevron-left"></i></button>
-            <button class="btn btn-outline-secondary btn-sm" id="nextMonth"><i class="fa fa-chevron-right"></i></button>
-          </div>
-        </div>
-
-        <table class="table table-bordered text-center align-middle">
-          <thead class="table-light">
-            <tr>
-              <th>Nama</th>
-              <th>Minggu 1</th>
-              <th>Minggu 2</th>
-              <th>Minggu 3</th>
-              <th>Minggu 4</th>
-              <th>Total Belum Bayar</th>
-            </tr>
-          </thead>
-          <tbody>
-  <?php if (!empty($pembayaran)): ?>
-    <?php foreach ($pembayaran as $row): ?>
-      <tr data-id="<?= $row['id'] ?>">
-        <td><?= htmlspecialchars($row['name']) ?></td>
-
-        <?php
-          $total_bayar_siswa = 0;
-          $total_belum_bayar = 0;
-          $bayar_per_minggu = 2000; // nominal kas per minggu
-
-          for ($i = 1; $i <= 4; $i++):
-            // Cek status bayar tiap minggu
-            $stmt2 = $pdo->prepare("
-              SELECT status, jumlah_bayar 
-              FROM pembayaran_mingguan 
-              WHERE pembayaran_id = ? AND minggu_ke = ?
-            ");
-            $stmt2->execute([$row['id'], $i]);
-            $rowMinggu = $stmt2->fetch(PDO::FETCH_ASSOC);
-
-            $status = $rowMinggu['status'] ?? 0;
-            $jumlah_bayar = $rowMinggu['jumlah_bayar'] ?? 0;
-            $checked = $status ? 'checked' : '';
-
-            // Hitung total yang sudah dibayar
-            $total_bayar_siswa += $jumlah_bayar;
-
-            // Hitung sisa belum bayar
-            if (!$status) $total_belum_bayar += $bayar_per_minggu;
-        ?>
-          <td>
-            <input type="checkbox" class="form-check-input bayar-checkbox"
-                   data-id="<?= $row['id'] ?>" data-minggu="<?= $i ?>" <?= $checked ?>>
-          </td>
-        <?php endfor; ?>
-
-        <td>
-          <?php if ($total_belum_bayar > 0): ?>
-            <span class="text-danger">Rp <?= number_format($total_belum_bayar, 0, ',', '.') ?></span>
-            <small class="text-muted">/ Rp <?= number_format($bayar_per_minggu * 4, 0, ',', '.') ?></small>
-          <?php else: ?>
-            <span class="text-success fw-bold">Lunas</span>
-          <?php endif; ?>
-        </td>
-      </tr>
-    <?php endforeach; ?>
-  <?php else: ?>
-    <tr><td colspan="6" class="text-muted text-center">Belum ada data.</td></tr>
-  <?php endif; ?>
-</tbody>
-
-        </table>
-      </div>
-
-      <!-- Data Pengeluaran -->
-      <div class="row mt-4">
-        <div class="col-md-12">
-          <div class="card p-3 shadow-sm border-0">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-              <h5 class="mb-0">Data Pengeluaran</h5>
+            <!-- Info nominal -->
+            <div class="mb-3 d-flex justify-content-center align-items-center gap-2">
+                <span class="fw-bold">Bayar per minggu:</span>
+                <span class="badge bg-info text-dark" style="font-size:15px;">
+                    Rp <?= number_format($bayar_per_minggu,0,',','.') ?>
+                </span>
             </div>
-            <table class="table table-bordered align-middle">
-              <thead class="table-light">
-                <tr>
-                  <th>Judul</th>
-                  <th>Jumlah</th>
-                  <th>Keterangan</th>
-                </tr>
-              </thead>
-              <tbody>
-                <?php
-                $stmt = $pdo->query("SELECT * FROM pengeluaran ORDER BY id DESC");
-                $pengeluaran = $stmt->fetchAll(PDO::FETCH_ASSOC);
-                if (!empty($pengeluaran)):
-                  foreach ($pengeluaran as $row): ?>
-                    <tr>
-                      <td><?= htmlspecialchars($row['title']) ?></td>
-                      <td class="text-danger">Rp <?= number_format($row['amount'], 0, ',', '.') ?></td>
-                      <td><?= htmlspecialchars($row['note'] ?? '-') ?></td>
-                    </tr>
-                  <?php endforeach;
-                else: ?>
-                  <tr><td colspan="3" class="text-center text-muted">Belum ada data pengeluaran.</td></tr>
-                <?php endif; ?>
-              </tbody>
-            </table>
-          </div>
+
+            <!-- Rekap Pembayaran -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-primary text-white text-center">
+                    <strong><?= $namaBulan[$bulan] ?> <?= $tahun ?></strong>
+                </div>
+                <div class="card-body p-2">
+                    <table class="table table-sm table-hover align-middle text-center" style="font-size:13px;">
+                        <thead class="table-light">
+                            <tr>
+                                <th>No</th>
+                                <th>Nama</th>
+                                <th>M1</th>
+                                <th>M2</th>
+                                <th>M3</th>
+                                <th>M4</th>
+                                <th>Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php 
+                            $no=1;
+                            foreach($siswa as $s): 
+                                $s_id = $s['id'];
+                                $belum = 0;
+                            ?>
+                            <tr>
+                                <td><?= $no++ ?></td>
+                                <td class="text-start"><?= htmlspecialchars($s['nama']) ?></td>
+                                <?php for($m=1; $m<=4; $m++):
+                                    $status = $pembayaran_data[$s_id][$m] ?? 0;
+                                    if(!$status) $belum++;
+                                ?>
+                                    <td><?= $status ? '✅' : '❌' ?></td>
+                                <?php endfor; ?>
+                                <td>
+                                    <?= $belum==0 
+                                        ? '<span class="text-success fw-bold">Lunas</span>' 
+                                        : '<span class="text-danger">- Rp '.number_format($belum*$bayar_per_minggu,0,',','.').'</span>'
+                                    ?>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ✅ Tabel Pengeluaran Bulan Ini -->
+            <div class="card shadow-sm">
+                <div class="card-header bg-danger text-white text-center">
+                    <strong>Pengeluaran Bulan <?= $namaBulan[$bulan] . " " . $tahun ?></strong>
+                </div>
+                <div class="card-body p-2">
+                    <table class="table table-sm table-bordered text-center align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>No</th>
+                                <th>Tanggal</th>
+                                <th>Judul</th>
+                                <th>Jumlah</th>
+                                <th>Keterangan</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        <?php if($pengeluaran): $no=1; ?>
+                            <?php foreach($pengeluaran as $p): ?>
+                            <tr>
+                                <td><?= $no++ ?></td>
+                                <td><?= date('d-m-Y', strtotime($p['created_at'])) ?></td>
+                                <td><?= htmlspecialchars($p['title']) ?></td>
+                                <td class="text-danger fw-bold">Rp <?= number_format($p['amount'],0,',','.') ?></td>
+                                <td><?= htmlspecialchars($p['note'] ?: '-') ?></td>
+                            </tr>
+                            <?php endforeach; ?>
+                        <?php else: ?>
+                            <tr><td colspan="5" class="text-muted">Tidak ada pengeluaran bulan ini</td></tr>
+                        <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
         </div>
-      </div>
-
-    </div>
-  </main>
+    </main>
 </div>
-
-<!-- Footer -->
-<?php include 'footer.php'; ?>
-
-<!-- JS -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-
-<script>
-// ✅ Checkbox update handler
-document.querySelectorAll('.bayar-checkbox').forEach(cb => {
-  cb.addEventListener('change', async () => {
-    const id = cb.dataset.id;
-    const minggu = cb.dataset.minggu;
-    const status = cb.checked ? 1 : 0;
-    await fetch('update_mingguan.php', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-      body: new URLSearchParams({id, minggu, status})
-    });
-  });
-});
-
-// 🔁 Navigasi bulan
-document.getElementById('prevMonth').onclick = () => {
-  const url = new URL(window.location.href);
-  let bulan = parseInt(url.searchParams.get('bulan') || <?= date('n') ?>);
-  let tahun = parseInt(url.searchParams.get('tahun') || <?= date('Y') ?>);
-  bulan--; if (bulan < 1) { bulan = 12; tahun--; }
-  url.searchParams.set('bulan', bulan);
-  url.searchParams.set('tahun', tahun);
-  window.location.href = url.toString();
-};
-document.getElementById('nextMonth').onclick = () => {
-  const url = new URL(window.location.href);
-  let bulan = parseInt(url.searchParams.get('bulan') || <?= date('n') ?>);
-  let tahun = parseInt(url.searchParams.get('tahun') || <?= date('Y') ?>);
-  bulan++; if (bulan > 12) { bulan = 1; tahun++; }
-  url.searchParams.set('bulan', bulan);
-  url.searchParams.set('tahun', tahun);
-  window.location.href = url.toString();
-};
-
-// 🔍 Pencarian
-document.addEventListener('DOMContentLoaded', function(){
-  const inputCari = document.getElementById('cariNama');
-  const table = document.querySelector('tbody');
-  if(inputCari && table){
-    inputCari.addEventListener('keyup', function(){
-      const filter = this.value.toLowerCase();
-      table.querySelectorAll('tr').forEach(tr=>{
-        const nama = tr.cells[0]?.textContent.toLowerCase()||'';
-        tr.style.display = nama.includes(filter)?'':'none';
-      });
-    });
-  }
-});
-</script>
-
 </body>
 </html>

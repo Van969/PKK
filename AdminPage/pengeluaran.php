@@ -1,189 +1,222 @@
+
 <?php
+session_start();
 require __DIR__ . '/../db.php';
+date_default_timezone_set('Asia/Jakarta');
 
-// ===== Hitung total pemasukan dari tabel pemasukan =====
-$stmt = $pdo->query("SELECT COALESCE(SUM(amount),0) FROM pemasukan");
-$total_pemasukan_db = $stmt->fetchColumn();
+// ===============================
+// Hitung Total Pemasukan (pakai kolom 'jumlah')
+// ===============================
+$total_pemasukan_db = $pdo->query("SELECT COALESCE(SUM(jumlah),0) FROM pemasukan")->fetchColumn();
 
-// ===== Hitung total jumlah membayar dari tabel pembayaran =====
-$stmt = $pdo->query("SELECT COALESCE(SUM(jumlah_membayar),0) FROM pembayaran");
-$total_pembayaran = $stmt->fetchColumn();
 
-// ===== Hitung total pengeluaran =====
-$stmt = $pdo->query("SELECT COALESCE(SUM(amount),0) FROM pengeluaran");
-$total_pengeluaran = $stmt->fetchColumn();
+// ===============================
+// Hitung total dari pembayaran mingguan
+// ===============================
+$total_pembayaran_mingguan = $pdo->query("
+    SELECT COALESCE(COUNT(*),0) * 5000
+    FROM pembayaran_mingguan_baru
+    WHERE status = 1
+")->fetchColumn();
 
-// ===== Gabungkan total pemasukan =====
-$total_pemasukan = $total_pemasukan_db + $total_pembayaran;
+// ===============================
+// Hitung total pembayaran bulanan (jika ada)
+// ===============================
+$total_pembayaran_bulanan = 0;
+try {
+    $total_pembayaran_bulanan = $pdo->query("
+        SELECT COALESCE(COUNT(*),0) * (5000 * 4)
+        FROM pembayaran_bulanan
+        WHERE status = 1
+    ")->fetchColumn();
+} catch (Exception $e) {}
 
-// ===== Hitung saldo bersih =====
+// ===============================
+// Total pemasukan keseluruhan
+// ===============================
+$total_pemasukan = $total_pemasukan_db + $total_pembayaran_mingguan + $total_pembayaran_bulanan;
+
+// ===============================
+// Hitung Total Pengeluaran
+// ===============================
+$total_pengeluaran = $pdo->query("SELECT COALESCE(SUM(amount),0) FROM pengeluaran")->fetchColumn();
+
+// ===============================
+// Hitung Saldo Bersih
+// ===============================
 $saldo_bersih = $total_pemasukan - $total_pengeluaran;
 
-
-// ===== Proses tambah data dari modal Tambah =====
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_GET['edit_id'])) {
-  $name = $_POST['name'] ?? '';
-  $jumlah_membayar = isset($_POST['jumlah_membayar']) ? (int)$_POST['jumlah_membayar'] : 0;
-  $belum_membayar = isset($_POST['belum_membayar']) ? (int)$_POST['belum_membayar'] : 0;
-  $total_tagihan = $jumlah_membayar + $belum_membayar;
-  $status = ($belum_membayar === 0) ? 'Lunas' : 'Belum Bayar';
-
-  $stmt = $pdo->prepare("INSERT INTO pembayaran (name, jumlah_membayar, belum_membayar, total_tagihan, status) VALUES (?,?,?,?,?)");
-  $stmt->execute([$name, $jumlah_membayar, $belum_membayar, $total_tagihan, $status]);
-
-  // Jika request AJAX (dari fetch)
-  if (isset($_POST['ajax'])) {
-    echo 'OK'; // 🟢 respon agar JS tahu sukses
-    exit;
-  }
-
-  header("Location: aksi.php");
-  exit;
-}
-
-
-// Proses edit data dari modal Edit
-// ===== Proses edit data dari modal Edit =====
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['edit_id'])) {
-  $id = (int)$_GET['edit_id'];
-  $name = $_POST['name'] ?? '';
-  $jumlah_membayar = isset($_POST['jumlah_membayar']) ? (int)$_POST['jumlah_membayar'] : 0;
-  $belum_membayar = isset($_POST['belum_membayar']) ? (int)$_POST['belum_membayar'] : 0;
-  $total_tagihan = $jumlah_membayar + $belum_membayar;
-  $status = ($belum_membayar === 0) ? 'Lunas' : 'Belum Bayar';
-
-  $stmt = $pdo->prepare("UPDATE pembayaran SET name=?, jumlah_membayar=?, belum_membayar=?, total_tagihan=?, status=? WHERE id=?");
-  $stmt->execute([$name, $jumlah_membayar, $belum_membayar, $total_tagihan, $status, $id]);
-
-  if (isset($_POST['ajax'])) {
-    echo 'OK';
-    exit;
-  }
-
-  header("Location: aksi.php");
-  exit;
-}
-
-
-// Ambil semua data pembayaran
-$stmt = $pdo->query("SELECT * FROM pembayaran ORDER BY id DESC");
-$pembayaran = $stmt->fetchAll(PDO::FETCH_ASSOC);
+// ===============================
+// Ambil Semua Data Pengeluaran
+// ===============================
+$stmt = $pdo->query("SELECT * FROM pengeluaran ORDER BY id DESC");
+$pengeluaran = $stmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
 <!doctype html>
 <html lang="id">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Kelola Pembayaran Kas</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css">
-  <style>
-    /* Hilangkan backdrop Bootstrap untuk modal */
-    /*.modal-backdrop { display: none !important; }
-    /* Modal tetap di atas konten */
-    .modal { z-index: 1050; }
-  </style>
+<meta charset="utf-8">
+<title>Kelola Pengeluaran</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
 </head>
-<body>
-  
-<div class="d-flex konten">
-  <?php include 'sidebar_aksi.php'; ?>
 
-  <main class="flex-fill p-4 bg-light">
-    <div class="container-fluid">
-      <!-- Header -->
-      <?php include __DIR__.'/header.php'; ?>
-<div class="row">
-  
-  <!-- Tabel Pengeluaran -->
-  <div class="col-md-12">
-    <div class="card p-3 shadow-sm border-0">
-      <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="mb-0">Data Pengeluaran</h5>
-        <button class="btn btn-success btn-sm" id="btnTambahPengeluaran">
-          <i class="fa fa-plus"></i> Tambah
-        </button>
-      </div>
-      <table class="table table-bordered align-middle">
-        <thead class="table-light">
-          <tr>
-            <th>Judul</th>
-            <th>Jumlah</th>
-            <th>Keterangan</th>
-            <th width="110">Aksi</th>
-          </tr>
-        </thead>
-        <tbody>
-          <?php
-          $stmt = $pdo->query("SELECT * FROM pengeluaran ORDER BY id DESC");
-          $pengeluaran = $stmt->fetchAll(PDO::FETCH_ASSOC);
-          if (!empty($pengeluaran)):
-            foreach ($pengeluaran as $row): ?>
-              <tr data-id="<?= $row['id'] ?>">
-                <td data-col="judul"><?= htmlspecialchars($row['title']) ?></td>
-                <td data-col="jumlah" class="text-danger">
-                Rp <?= number_format($row['amount'], 0, ',', '.') ?>
-              </td>
-                <td data-col="keterangan"><?= htmlspecialchars($row['note'] ?? '-') ?></td>
+<body class="bg-light">
+<div class="d-flex">
+  <?php include 'sidebar.php'; ?>
 
-                <td>
-                  <button class="btn btn-warning btn-sm btnEditPengeluaran"
-                          data-id="<?= $row['id'] ?>"
-                          data-title="<?= htmlspecialchars($row['title']) ?>"
-                          data-amount="<?= $row['amount'] ?>"
-                          data-desc="<?= htmlspecialchars($row['note']) ?>">
-                    <i class="fa fa-edit"></i>
-                  </button>
-                  <a href="delete_pengeluaran.php?id=<?= $row['id'] ?>"
-                     class="btn btn-danger btn-sm"
-                     onclick="return confirm('Yakin ingin hapus data ini?')">
-                    <i class="fa fa-trash"></i>
-                  </a>
-                </td>
-              </tr>
-            <?php endforeach;
-          else: ?>
-            <tr><td colspan="4" class="text-center text-muted">Belum ada data pengeluaran.</td></tr>
-          <?php endif; ?>
-        </tbody>
-      </table>
-    </div>
-  </div>
-</div>
-<!-- ===================== Modal Tambah/Edit Pengeluaran ===================== -->
-<div class="modal fade" id="modalPengeluaran" tabindex="-1">
-  <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content shadow-lg">
-      <div class="modal-header bg-danger text-white">
-        <h5 class="modal-title"><i class="fa fa-plus"></i> <span id="judulModalPengeluaran">Tambah Pengeluaran</span></h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <form id="formPengeluaran" method="POST" action="simpan_pengeluaran.php">
-        <div class="modal-body">
-          <input type="hidden" name="id" id="idPengeluaran">
-          <div class="mb-3">
-            <label class="form-label">Judul</label>
-            <input type="text" name="title" id="titlePengeluaran" class="form-control" required>
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Jumlah</label>
-            <input type="number" name="amount" id="amountPengeluaran" class="form-control" required step="1000" min="0">
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Keterangan</label>
-            <textarea name="description" id="descPengeluaran" class="form-control" rows="2"></textarea>
+  <div class="content w-100">
+    <?php include __DIR__.'/header.php'; ?>
+
+    <main class="container mt-4">
+      <div class="card shadow-sm">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="mb-0">Data Pengeluaran</h5>
+          <div>
+            <a href="pengeluaran_pdf.php" target="_blank" class="btn btn-danger btn-sm">
+              <i class="fa fa-file-pdf"></i> Download PDF
+            </a>
+            <button class="btn btn-success btn-sm" id="btnTambah" data-bs-toggle="modal" data-bs-target="#modalPengeluaran">
+              <i class="fa fa-plus"></i> Tambah
+            </button>
           </div>
         </div>
+
+        <div class="card-body">
+          <table class="table table-bordered text-center align-middle">
+            <thead class="table-light">
+              <tr>
+                <th>Tanggal</th>
+                <th>Judul</th>
+                <th>Jumlah</th>
+                <th>Keterangan</th>
+                <th width="100">Aksi</th>
+              </tr>
+            </thead>
+            <tbody>
+            <?php if ($pengeluaran): ?>
+              <?php foreach ($pengeluaran as $row): ?>
+              <tr>
+                <td><?= date('d-m-Y', strtotime($row['created_at'])) ?></td>
+                <td><?= htmlspecialchars($row['title']) ?></td>
+                <td class="text-danger fw-bold">Rp <?= number_format($row['amount'],0,',','.') ?></td>
+                <td><?= htmlspecialchars($row['note'] ?: '-') ?></td>
+                <td>
+                  <button class="btn btn-warning btn-sm btnEdit"
+                    data-id="<?= $row['id'] ?>"
+                    data-title="<?= htmlspecialchars($row['title']) ?>"
+                    data-amount="<?= $row['amount'] ?>"
+                    data-note="<?= htmlspecialchars($row['note']) ?>"
+                    data-bs-toggle="modal"
+                    data-bs-target="#modalPengeluaran">
+                    <i class="fa fa-edit"></i>
+                  </button>
+                  <button class="btn btn-danger btn-sm btnDelete" data-id="<?= $row['id'] ?>">
+                    <i class="fa fa-trash"></i>
+                  </button>
+                </td>
+              </tr>
+              <?php endforeach; ?>
+            <?php else: ?>
+              <tr><td colspan="5" class="text-muted">Belum ada data</td></tr>
+            <?php endif; ?>
+            </tbody>
+          </table>
+
+          <div class="mt-3">
+            <strong>Sisa Saldo:</strong>
+            Rp <?= number_format($saldo_bersih,0,',','.') ?>
+          </div>
+           </main>
+        </div>
+        
+      </div>
+    
+
+    <?php include __DIR__.'/footer.php'; ?>
+  </div>
+</div>
+
+<!-- Modal Form -->
+<div class="modal fade" id="modalPengeluaran">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="formPengeluaran">
+        <div class="modal-header bg-danger text-white">
+          <h5 id="judulModal">Tambah Pengeluaran</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+
+        <div class="modal-body">
+          <input type="hidden" name="id" id="edit_id">
+          <label>Judul</label>
+          <input type="text" name="title" id="title" class="form-control" required>
+
+          <label class="mt-2">Jumlah</label>
+          <input type="number" name="amount" id="amount" class="form-control" required>
+
+          <label class="mt-2">Keterangan</label>
+          <textarea name="note" id="note" class="form-control" rows="2"></textarea>
+        </div>
+
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
           <button type="submit" class="btn btn-danger">Simpan</button>
         </div>
       </form>
     </div>
+           
   </div>
-          </main>
 </div>
-<?php include 'footer.php'; ?>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-<script src="script.js"></script>
+
+<script>
+const form = document.getElementById('formPengeluaran');
+
+// === Simpan (Tambah / Edit) ===
+form.addEventListener('submit', async e => {
+  e.preventDefault();
+  const fd = new FormData(form);
+  const res = await fetch('simpan_pengeluaran.php', { method: 'POST', body: fd });
+  const data = await res.json();
+  if (data.status === 'success') location.reload();
+  else alert(data.message);
+});
+
+// === Edit Data ===
+document.querySelectorAll('.btnEdit').forEach(btn => {
+  btn.addEventListener('click', () => {
+    judulModal.textContent = 'Edit Pengeluaran';
+    edit_id.value = btn.dataset.id;
+    title.value = btn.dataset.title;
+    amount.value = btn.dataset.amount;
+    note.value = btn.dataset.note;
+  });
+});
+
+// === Tambah Data ===
+btnTambah.addEventListener('click', () => {
+  form.reset();
+  edit_id.value = '';
+  judulModal.textContent = 'Tambah Pengeluaran';
+});
+
+// === Hapus Data ===
+document.querySelectorAll('.btnDelete').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    if (!confirm('Hapus data ini?')) return;
+    const fd = new FormData();
+    fd.append('id', btn.dataset.id);
+    const res = await fetch('delete_pengeluaran.php', { method: 'POST', body: fd });
+    const text = await res.text();
+    if (text === 'success') location.reload();
+  });
+});
+</script>
+</body>
+</html>
+
+ini kamu cek yg bnr knp muncul eror itu
